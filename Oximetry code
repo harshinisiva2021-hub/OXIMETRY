@@ -1,0 +1,39 @@
+mport numpy as np
+import pandas as pd
+
+# Assume rgb_frames is a numpy array of shape (n_frames, height, width, 3)
+# For example, obtained from smartphone camera API with flash enabled
+
+def extract_ppg_signal(rgb_frames):
+    # Compute mean RGB for each frame for PPG
+    red_means = np.mean(rgb_frames[:, :, :, 0], axis=(1,2))
+    green_means = np.mean(rgb_frames[:, :, :, 1], axis=(1,2))
+    blue_means = np.mean(rgb_frames[:, :, :, 2], axis=(1,2))
+    # Stack into DataFrame for further processing
+    ppg_df = pd.DataFrame({
+        'red': red_means,
+        'green': green_means,
+        'blue': blue_means
+    })
+    return ppg_df
+
+def ratio_of_ratios(ppg_df, red_coeff=1.0, green_coeff=1.35, blue_coeff=0.0):
+    # Normalize signals (remove DC component)
+    ppg_df_norm = ppg_df - ppg_df.mean()
+    # Compute AC amplitudes for red and green channels
+    ac_red = np.max(ppg_df_norm['red']) - np.min(ppg_df_norm['red'])
+    ac_green = np.max(ppg_df_norm['green']) - np.min(ppg_df_norm['green'])
+    # Compute DC components (mean level)
+    dc_red = np.mean(ppg_df['red'])
+    dc_green = np.mean(ppg_df['green'])
+    # Ratio of ratios from Mendelson et al.
+    R = (ac_red/dc_red) / (ac_green/dc_green)
+    # Basic calibration for SpO2 estimation (coefficients may require validation/calibration)
+    SpO2 = 100 - red_coeff * R * 100 + green_coeff
+    return SpO2
+
+# Example usage
+# rgb_frames = ... # load from mobile camera frames
+ppg_df = extract_ppg_signal(rgb_frames)
+spo2_est = ratio_of_ratios(ppg_df)
+print(f"Estimated SpO2: {spo2_est:.2f}")
