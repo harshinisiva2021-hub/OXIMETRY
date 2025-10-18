@@ -1,4 +1,4 @@
-Import numpy as np
+import numpy as np
 import pandas as pd
 
 # Assume rgb_frames is a numpy array of shape (n_frames, height, width, 3)
