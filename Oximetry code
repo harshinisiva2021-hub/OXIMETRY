@@ -1,15 +1,20 @@
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
 
-# Assume rgb_frames is a numpy array of shape (n_frames, height, width, 3)
-# For example, obtained from smartphone camera API with flash enabled
-
+# -----------------------------------------------------------
+# STEP 1: Extract PPG signals from smartphone RGB video frames
+# -----------------------------------------------------------
 def extract_ppg_signal(rgb_frames):
-    # Compute mean RGB for each frame for PPG
-    red_means = np.mean(rgb_frames[:, :, :, 0], axis=(1,2))
-    green_means = np.mean(rgb_frames[:, :, :, 1], axis=(1,2))
-    blue_means = np.mean(rgb_frames[:, :, :, 2], axis=(1,2))
-    # Stack into DataFrame for further processing
+    """
+    Extract average RGB intensity from each frame.
+    Input: rgb_frames - numpy array of shape (n_frames, height, width, 3)
+    Output: DataFrame with mean red, green, blue channel values per frame
+    """
+    red_means = np.mean(rgb_frames[:, :, :, 0], axis=(1, 2))
+    green_means = np.mean(rgb_frames[:, :, :, 1], axis=(1, 2))
+    blue_means = np.mean(rgb_frames[:, :, :, 2], axis=(1, 2))
+
     ppg_df = pd.DataFrame({
         'red': red_means,
         'green': green_means,
@@ -17,23 +22,76 @@ def extract_ppg_signal(rgb_frames):
     })
     return ppg_df
 
-def ratio_of_ratios(ppg_df, red_coeff=1.0, green_coeff=1.35, blue_coeff=0.0):
-    # Normalize signals (remove DC component)
+# -----------------------------------------------------------
+# STEP 2: Compute features (AC/DC components and ratio-of-ratios)
+# -----------------------------------------------------------
+def extract_features(ppg_df):
+    """
+    Compute physiological signal features from PPG data.
+    Features include AC/DC amplitudes and the ratio-of-ratios.
+    """
     ppg_df_norm = ppg_df - ppg_df.mean()
-    # Compute AC amplitudes for red and green channels
-    ac_red = np.max(ppg_df_norm['red']) - np.min(ppg_df_norm['red'])
-    ac_green = np.max(ppg_df_norm['green']) - np.min(ppg_df_norm['green'])
-    # Compute DC components (mean level)
-    dc_red = np.mean(ppg_df['red'])
-    dc_green = np.mean(ppg_df['green'])
-    # Ratio of ratios from Mendelson et al.
-    R = (ac_red/dc_red) / (ac_green/dc_green)
-    # Basic calibration for SpO2 estimation (coefficients may require validation/calibration)
-    SpO2 = 100 - red_coeff * R * 100 + green_coeff
-    return SpO2
 
-# Example usage
-# rgb_frames = ... # load from mobile camera frames
-ppg_df = extract_ppg_signal(rgb_frames)
-spo2_est = ratio_of_ratios(ppg_df)
-print(f"Estimated SpO2: {spo2_est:.2f}")
+    ac_red = np.ptp(ppg_df_norm['red'])        # AC amplitude (peak-to-peak)
+    ac_green = np.ptp(ppg_df_norm['green'])
+    dc_red = np.mean(ppg_df['red'])            # DC component (mean intensity)
+    dc_green = np.mean(ppg_df['green'])
+
+    ratio_of_ratios = (ac_red / dc_red) / (ac_green / dc_green)
+
+    features = {
+        'ac_red': ac_red,
+        'ac_green': ac_green,
+        'dc_red': dc_red,
+        'dc_green': dc_green,
+        'ratio_of_ratios': ratio_of_ratios
+    }
+    return pd.DataFrame([features])
+
+# -----------------------------------------------------------
+# STEP 3: Train a Random Forest regression model
+# -----------------------------------------------------------
+def train_model():
+    """
+    Train a Random Forest model on synthetic data for demonstration.
+    In practice, replace with real PPG-SpO₂ training dataset.
+    """
+    np.random.seed(42)
+    X_train = pd.DataFrame({
+        'ac_red': np.random.rand(100),
+        'ac_green': np.random.rand(100),
+        'dc_red': np.random.rand(100),
+        'dc_green': np.random.rand(100),
+        'ratio_of_ratios': np.random.rand(100)
+    })
+    y_train = np.random.uniform(85, 100, 100)  # simulated ground-truth SpO₂ values
+
+    rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+    rf_model.fit(X_train, y_train)
+    return rf_model
+
+# -----------------------------------------------------------
+# STEP 4: Combine all steps for SpO₂ prediction
+# -----------------------------------------------------------
+def estimate_spo2(rgb_frames, model):
+    """
+    Main function to estimate SpO₂ from input RGB frames.
+    """
+    ppg_df = extract_ppg_signal(rgb_frames)
+    features = extract_features(ppg_df)
+    spo2_pred = model.predict(features)[0]
+    return spo2_pred
+
+# -----------------------------------------------------------
+# MAIN EXECUTION BLOCK
+# -----------------------------------------------------------
+if __name__ == "__main__":
+    # Simulated RGB input (e.g., 100 frames, 64x64 pixels, 3 color channels)
+    rgb_frames = np.random.randint(50, 255, (100, 64, 64, 3))
+
+    # Train model
+    model = train_model()
+
+    # Estimate SpO₂
+    spo2_estimate = estimate_spo2(rgb_frames, model)
+    print(f"Estimated SpO₂: {spo2_estimate:.2f}%")
